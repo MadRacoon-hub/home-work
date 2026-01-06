@@ -656,13 +656,23 @@
     }
 
     // Добавить груз
+    // Добавить груз
     async function addCargo() {
-        const name = document.getElementById('cargoName').value;
+        const name = document.getElementById('cargoName').value.trim();
         const size = parseInt(document.getElementById('cargoSize').value);
         const tripId = document.getElementById('cargoTripId').value;
 
-        if (!name || size < 1) {
+        console.log('Добавление груза:', { name, size, tripId });
+
+        if (!name || size < 1 || !tripId) {
             showAlert('Заполните все поля правильно', 'error');
+            return;
+        }
+
+        // Проверяем доступное место на клиенте перед отправкой
+        const availableSpace = calculateAvailableSpace(tripId);
+        if (size > availableSpace) {
+            showAlert(`Недостаточно места. Доступно: ${availableSpace} ячеек`, 'error');
             return;
         }
 
@@ -732,49 +742,119 @@
     }
 
     // Добавить груз в конкретный рейс
+    // Добавить груз в конкретный рейс
     function addCargoToTrip(tripId) {
-        const trip = trips.find(t => t.id === tripId);
-        if (!trip) return;
+        console.log('Добавление груза в рейс:', tripId);
 
-        const vehicle = vehicles.find(v => v.id === trip.vehicleId);
-        const usedSpace = cargos.filter(c => c.tripId === trip.id).reduce((sum, c) => sum + c.size, 0);
-        const availableSpace = vehicle ? vehicle.capacity - usedSpace : 0;
+        const trip = trips.find(t => t.id.toString() === tripId.toString());
+        if (!trip) {
+            showAlert('Рейс не найден', 'error');
+            return;
+        }
+
+        const vehicle = vehicles.find(v => v.id === trip.vehicleId?.toString());
+        if (!vehicle) {
+            showAlert('У этого рейса нет автомобиля', 'error');
+            return;
+        }
+
+        // Рассчитываем занятое место точно
+        const tripCargos = cargos.filter(c => c.tripId?.toString() === tripId.toString());
+        const usedSpace = tripCargos.reduce((sum, c) => sum + c.size, 0);
+        const availableSpace = vehicle.capacity - usedSpace;
+
+        console.log('Расчет места:', {
+            capacity: vehicle.capacity,
+            usedSpace,
+            availableSpace,
+            cargosCount: tripCargos.length
+        });
+
+        if (availableSpace <= 0) {
+            showAlert('В этом рейсе нет свободных ячеек', 'error');
+            return;
+        }
 
         const modalHtml = `
-                <div class="modal" id="addCargoToTripModal">
-                    <div class="modal-content">
-                        <h2 style="margin-bottom: 20px;">Добавить груз в рейс</h2>
-                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                            <strong>Рейс ${trip.id} → ${trip.destination}</strong><br>
-                            Автомобиль: ${vehicle ? vehicle.name : 'Не назначен'}<br>
-                            Свободно ячеек: ${availableSpace}
-                        </div>
+        <div class="modal" id="addCargoToTripModal">
+            <div class="modal-content">
+                <h2 style="margin-bottom: 20px;">Добавить груз в рейс</h2>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <strong>Рейс ${trip.id} → ${trip.destination}</strong><br>
+                    Автомобиль: ${vehicle.name}<br>
+                    Занято ячеек: ${usedSpace}/${vehicle.capacity}<br>
+                    <strong>Свободно ячеек: ${availableSpace}</strong>
+                </div>
 
-                        <div class="form-group">
-                            <label>Название груза:</label>
-                            <input type="text" id="cargoNameTrip" placeholder="Например: Холодильники">
-                        </div>
+                <div class="form-group">
+                    <label>Название груза:</label>
+                    <input type="text" id="cargoNameTrip" placeholder="Например: Холодильники" autocomplete="off">
+                </div>
 
-                        <div class="form-group">
-                            <label>Размер (ячеек):</label>
-                            <input type="number" id="cargoSizeTrip" value="1" min="1" max="${availableSpace}">
-                        </div>
-
-                        <div class="modal-footer">
-                            <button class="btn" onclick="addCargoToTripAction('${tripId}')">
-                                <i class="fas fa-plus"></i> Добавить
-                            </button>
-                            <button class="btn btn-danger" onclick="closeModal()">
-                                Отмена
-                            </button>
-                        </div>
+                <div class="form-group">
+                    <label>Размер (ячеек):</label>
+                    <input type="number" id="cargoSizeTrip" value="1" min="1" max="${availableSpace}">
+                    <div style="font-size: 12px; color: var(--gray); margin-top: 5px;">
+                        Максимальный размер: ${availableSpace} ячеек
                     </div>
                 </div>
-            `;
+
+                <div class="modal-footer">
+                    <button class="btn" onclick="addCargoToTripAction('${tripId}')">
+                        <i class="fas fa-plus"></i> Добавить
+                    </button>
+                    <button class="btn btn-danger" onclick="closeModal()">
+                        Отмена
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
 
         document.getElementById('modalContainer').innerHTML = modalHtml;
         document.getElementById('addCargoToTripModal').style.display = 'flex';
     }
+
+    // Расчет доступного места в рейсе
+    function calculateAvailableSpace(tripId) {
+        const trip = trips.find(t => t.id.toString() === tripId.toString());
+        if (!trip) return 0;
+
+        const vehicle = vehicles.find(v => v.id === trip.vehicleId?.toString());
+        if (!vehicle) return 0;
+
+        const tripCargos = cargos.filter(c => c.tripId?.toString() === tripId.toString());
+        const usedSpace = tripCargos.reduce((sum, c) => sum + c.size, 0);
+
+        return Math.max(0, vehicle.capacity - usedSpace);
+    }
+
+    // Получение информации о занятости рейса
+    function getTripOccupancy(tripId) {
+        const trip = trips.find(t => t.id.toString() === tripId.toString());
+        if (!trip) return null;
+
+        const vehicle = vehicles.find(v => v.id === trip.vehicleId?.toString());
+        if (!vehicle) return null;
+
+        const tripCargos = cargos.filter(c => c.tripId?.toString() === tripId.toString());
+        const usedSpace = tripCargos.reduce((sum, c) => sum + c.size, 0);
+        const availableSpace = vehicle.capacity - usedSpace;
+
+        return {
+            trip,
+            vehicle,
+            cargos: tripCargos,
+            usedSpace,
+            capacity: vehicle.capacity,
+            availableSpace,
+            isFull: availableSpace <= 0
+        };
+    }
+
+    // Добавьте функции в глобальную область видимости
+    window.calculateAvailableSpace = calculateAvailableSpace;
+    window.getTripOccupancy = getTripOccupancy;
 
     async function addCargoToTripAction(tripId) {
         const name = document.getElementById('cargoNameTrip').value;

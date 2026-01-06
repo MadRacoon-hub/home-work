@@ -53,17 +53,5 @@ app.use((err, req, res, next) => {
 
 // Запуск сервера
 app.listen(port, async () => {
-    console.log(`🚀 Сервер запущен: http://localhost:${port}`);
-    console.log(`📁 Статика: http://localhost:${port}/index.html`);
-    console.log(`📋 API endpoints:`);
-    console.log(`  🚗 GET  /api/v1/vehicles - все автомобили`);
-    console.log(`  🚛 GET  /api/v1/trips - все рейсы с деталями`);
-    console.log(`  📦 GET  /api/v1/cargos - все грузы`);
-    console.log(`  📍 GET  /api/v1/trips/destinations - пункты назначения`);
-    console.log(`  ➕ POST /api/v1/trips - создать рейс`);
-    console.log(`  ➕ POST /api/v1/cargos - создать груз`);
-    console.log(`  ✏️  PUT  /api/v1/cargos/:id - обновить/перенести груз`);
-    console.log(`  ❌ DELETE /api/v1/trips/:id - удалить рейс`);
-    console.log(`  ❌ DELETE /api/v1/cargos/:id - удалить груз`);
-    console.log(`📊 База данных: MySQL transport_company`);
+    console.log(`Сервер запущен: http://localhost:${port}`);
 });

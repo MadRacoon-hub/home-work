@@ -28,6 +28,7 @@ router.post('/cargos',
             }
 
             const { tripId, size } = req.body;
+            console.log('Добавление груза в рейс:', tripId, 'Размер:', size);
 
             // Проверяем существование рейса
             const trip = await Trip.getById(tripId);
@@ -35,8 +36,10 @@ router.post('/cargos',
                 return res.status(400).json({ message: 'Рейс не найден' });
             }
 
-            // Проверяем вместимость
+            // Проверяем вместимость (не исключаем никакой груз)
             const canAdd = await Cargo.canAddToTrip(tripId, size);
+            console.log('Можно добавить?', canAdd);
+
             if (!canAdd) {
                 const availableSpace = await Cargo.getAvailableSpace(tripId);
                 return res.status(400).json({
@@ -47,6 +50,7 @@ router.post('/cargos',
             const cargo = await Cargo.create(req.body);
             res.status(201).json(cargo);
         } catch (err) {
+            console.error('Error in POST /cargos:', err);
             res.status(500).json({ message: err.message });
         }
     }
@@ -59,6 +63,8 @@ router.put('/cargos/:id',
     body('tripId').optional().isInt().withMessage('ID рейса должен быть числом'),
     async (req, res) => {
         try {
+            console.log('Перенос груса. ID:', req.params.id, 'Данные:', req.body);
+
             const errors = validationResult(req);
             if (!errors.isEmpty()) {
                 return res.status(400).json({ errors: errors.array() });
@@ -75,17 +81,23 @@ router.put('/cargos/:id',
 
             // Если меняется рейс - проверяем логику переноса
             if (newTripId && newTripId !== currentTripId) {
+                console.log('Меняем рейс. С:', currentTripId, 'На:', newTripId);
+
                 // 1. Проверяем существование нового рейса
                 const newTrip = await Trip.getById(newTripId);
                 if (!newTrip) {
+                    console.log('Новый рейс не найден:', newTripId);
                     return res.status(400).json({ message: 'Новый рейс не найден' });
                 }
 
                 // 2. Проверяем совпадение пунктов назначения
                 const currentTrip = await Trip.getById(currentTripId);
                 if (!currentTrip) {
+                    console.log('Текущий рейс не найден:', currentTripId);
                     return res.status(400).json({ message: 'Текущий рейс не найден' });
                 }
+
+                console.log('Пункты назначения. Текущий:', currentTrip.destination, 'Новый:', newTrip.destination);
 
                 if (newTrip.destination !== currentTrip.destination) {
                     return res.status(400).json({
@@ -93,9 +105,11 @@ router.put('/cargos/:id',
                     });
                 }
 
-                // 3. Проверяем вместимость в новом рейсе
+                // 3. Проверяем вместимость в новом рейсе (исключаем текущий груз)
                 const cargoSize = newSize || currentCargo.size;
                 const canAdd = await Cargo.canAddToTrip(newTripId, cargoSize);
+                console.log('Проверка вместимости в новом рейсе. Размер:', cargoSize, 'Можно добавить:', canAdd);
+
                 if (!canAdd) {
                     const availableSpace = await Cargo.getAvailableSpace(newTripId);
                     return res.status(400).json({
@@ -105,11 +119,17 @@ router.put('/cargos/:id',
             }
 
             // Если меняется размер груза - проверяем вместимость в текущем рейсе
+            // При этом исключаем текущий груз из расчета
             if (newSize && newSize !== currentCargo.size) {
+                console.log('Меняем размер груза с', currentCargo.size, 'на', newSize);
                 const cargoSize = newSize;
-                const canAdd = await Cargo.canAddToTrip(currentTripId, cargoSize - currentCargo.size);
+
+                // Проверяем с учетом исключения текущего груза
+                const canAdd = await Cargo.canAddToTrip(currentTripId, cargoSize, cargoId);
+                console.log('Проверка изменения размера. Можно изменить?', canAdd);
+
                 if (!canAdd) {
-                    const availableSpace = await Cargo.getAvailableSpace(currentTripId);
+                    const availableSpace = await Cargo.getAvailableSpace(currentTripId, cargoId);
                     return res.status(400).json({
                         message: `Новый размер превышает доступное место. Доступно: ${availableSpace} ячеек`
                     });
@@ -117,8 +137,10 @@ router.put('/cargos/:id',
             }
 
             const updatedCargo = await Cargo.update(cargoId, req.body);
+            console.log('Груз обновлен:', updatedCargo);
             res.status(200).json(updatedCargo);
         } catch (err) {
+            console.error('Ошибка в PUT /cargos/:id:', err);
             res.status(500).json({ message: err.message });
         }
     }

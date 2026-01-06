@@ -132,23 +132,60 @@ class Cargo {
         }
     }
 
-    async canAddToTrip(tripId, cargoSize) {
+    async canAddToTrip(tripId, cargoSize, excludeCargoId = null) {
         try {
-            // Получаем информацию о рейсе и автомобиле
-            const [rows] = await db.query(`
-        SELECT v.capacity, 
-               IFNULL(SUM(c.size), 0) as usedSpace
-        FROM trips t
-        JOIN vehicles v ON t.vehicle_id = v.idV
-        LEFT JOIN cargos c ON t.idT = c.trip_id
-        WHERE t.idT = ?
-        GROUP BY t.idT, v.idV, v.capacity
-      `, [tripId]);
+            console.log('Проверка canAddToTrip. Рейс:', tripId, 'Размер:', cargoSize, 'Исключаемый груз:', excludeCargoId);
 
-            if (!rows[0]) return false;
+            // Преобразуем tripId в число
+            const tripIdNum = typeof tripId === 'string' ? parseInt(tripId) : tripId;
+            const cargoSizeNum = typeof cargoSize === 'string' ? parseInt(cargoSize) : cargoSize;
 
-            const { capacity, usedSpace } = rows[0];
-            return (usedSpace + cargoSize) <= capacity;
+            // Базовый запрос для получения вместимости
+            let query = `
+                SELECT
+                    v.capacity,
+                    COALESCE(SUM(c.size), 0) as usedSpace
+                FROM trips t
+                         JOIN vehicles v ON t.vehicle_id = v.idV
+                         LEFT JOIN cargos c ON t.idT = c.trip_id
+                WHERE t.idT = ?
+            `;
+
+            const params = [tripIdNum];
+
+            // Если нужно исключить определенный груз (например, при переносе)
+            if (excludeCargoId) {
+                const excludeIdNum = typeof excludeCargoId === 'string' ? parseInt(excludeCargoId) : excludeCargoId;
+                query += ` AND (c.idC != ? OR c.idC IS NULL)`;
+                params.push(excludeIdNum);
+            }
+
+            query += ` GROUP BY t.idT, v.idV, v.capacity`;
+
+            console.log('SQL запрос:', query, 'Параметры:', params);
+
+            const [rows] = await db.query(query, params);
+
+            if (!rows[0]) {
+                console.log('Рейс не найден или нет автомобиля');
+                return false;
+            }
+
+            // Явно преобразуем usedSpace в число
+            const capacity = parseInt(rows[0].capacity);
+            const usedSpace = parseInt(rows[0].usedSpace) || 0;
+            const result = (usedSpace + cargoSizeNum) <= capacity;
+
+            console.log('Результат проверки:', {
+                capacity,
+                usedSpace,
+                newCargoSize: cargoSizeNum,
+                total: usedSpace + cargoSizeNum,
+                canAdd: result,
+                availableSpace: capacity - usedSpace
+            });
+
+            return result;
         } catch (error) {
             console.error('Error checking cargo capacity:', error);
             throw error;
@@ -157,34 +194,51 @@ class Cargo {
 
     async getTotalSizeInTrip(tripId) {
         try {
-            const [rows] = await db.query(`
-        SELECT IFNULL(SUM(size), 0) as totalSize
-        FROM cargos
-        WHERE trip_id = ?
-      `, [tripId]);
+            const tripIdNum = typeof tripId === 'string' ? parseInt(tripId) : tripId;
 
-            return rows[0].totalSize || 0;
+            const [rows] = await db.query(`
+            SELECT COALESCE(SUM(size), 0) as totalSize
+            FROM cargos
+            WHERE trip_id = ?
+        `, [tripIdNum]);
+
+            return parseInt(rows[0].totalSize) || 0;
         } catch (error) {
             console.error('Error getting total cargo size in trip:', error);
             throw error;
         }
     }
 
-    async getAvailableSpace(tripId) {
+    async getAvailableSpace(tripId, excludeCargoId = null) {
         try {
-            const [rows] = await db.query(`
-        SELECT v.capacity, 
-               IFNULL(SUM(c.size), 0) as usedSpace
-        FROM trips t
-        JOIN vehicles v ON t.vehicle_id = v.idV
-        LEFT JOIN cargos c ON t.idT = c.trip_id
-        WHERE t.idT = ?
-        GROUP BY t.idT, v.idV, v.capacity
-      `, [tripId]);
+            const tripIdNum = typeof tripId === 'string' ? parseInt(tripId) : tripId;
+
+            let query = `
+                SELECT
+                    v.capacity,
+                    COALESCE(SUM(c.size), 0) as usedSpace
+                FROM trips t
+                         JOIN vehicles v ON t.vehicle_id = v.idV
+                         LEFT JOIN cargos c ON t.idT = c.trip_id
+                WHERE t.idT = ?
+            `;
+
+            const params = [tripIdNum];
+
+            if (excludeCargoId) {
+                const excludeIdNum = typeof excludeCargoId === 'string' ? parseInt(excludeCargoId) : excludeCargoId;
+                query += ` AND (c.idC != ? OR c.idC IS NULL)`;
+                params.push(excludeIdNum);
+            }
+
+            query += ` GROUP BY t.idT, v.idV, v.capacity`;
+
+            const [rows] = await db.query(query, params);
 
             if (!rows[0]) return 0;
 
-            const { capacity, usedSpace } = rows[0];
+            const capacity = parseInt(rows[0].capacity);
+            const usedSpace = parseInt(rows[0].usedSpace) || 0;
             return capacity - usedSpace;
         } catch (error) {
             console.error('Error getting available space:', error);

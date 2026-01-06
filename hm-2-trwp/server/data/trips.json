@@ -1,0 +1,22 @@
+[
+  {
+    "destination": "Москва",
+    "vehicleId": "v1",
+    "id": "t1766941466183"
+  },
+  {
+    "destination": "Санкт-Петербург",
+    "vehicleId": "v1",
+    "id": "t1766941500966"
+  },
+  {
+    "destination": "Москва",
+    "vehicleId": "v1",
+    "id": "t1766941506794"
+  },
+  {
+    "destination": "Москва",
+    "vehicleId": "v4",
+    "id": "t1766941512769"
+  }
+]

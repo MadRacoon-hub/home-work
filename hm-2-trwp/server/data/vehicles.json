@@ -1,0 +1,32 @@
+[
+  {
+    "id": "v1",
+    "name": "Газель-1",
+    "type": "фургон",
+    "capacity": 5
+  },
+  {
+    "id": "v2",
+    "name": "Газель-2",
+    "type": "фургон",
+    "capacity": 5
+  },
+  {
+    "id": "v3",
+    "name": "КАМАЗ-1",
+    "type": "грузовик",
+    "capacity": 10
+  },
+  {
+    "id": "v4",
+    "name": "MAN TGS",
+    "type": "фура",
+    "capacity": 20
+  },
+  {
+    "id": "v5",
+    "name": "Scania R500",
+    "type": "фура",
+    "capacity": 20
+  }
+]

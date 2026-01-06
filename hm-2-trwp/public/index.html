@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель транспортной компании</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body>
+<div class="container">
+    <!-- Шапка -->
+    <header>
+        <h1><i class="fas fa-truck-loading"></i> Админ-панель транспортной компании</h1>
+        <!-- Убрали кнопку "Обновить" -->
+    </header>
+
+    <!-- Панель статистики -->
+    <div class="stats-bar" id="stats-bar">
+        <div class="stat-card">
+            <i class="fas fa-truck" style="color: #3498db;"></i>
+            <div class="value" id="stat-vehicles">0</div>
+            <div class="label">Автомобилей</div>
+        </div>
+        <div class="stat-card">
+            <i class="fas fa-route" style="color: #27ae60;"></i>
+            <div class="value" id="stat-trips">0</div>
+            <div class="label">Активных рейсов</div>
+        </div>
+        <div class="stat-card">
+            <i class="fas fa-boxes" style="color: #f39c12;"></i>
+            <div class="value" id="stat-cargos">0</div>
+            <div class="label">Грузов</div>
+        </div>
+        <div class="stat-card">
+            <i class="fas fa-chart-pie" style="color: #9b59b6;"></i>
+            <div class="value" id="stat-usage">0%</div>
+            <div class="label">Загрузка</div>
+        </div>
+    </div>
+
+    <!-- Основной контент -->
+    <div class="main-content">
+        <!-- Левая колонка: Автомобили и Рейсы -->
+        <div>
+            <!-- Секция автомобилей (фиксированный список) -->
+            <div class="section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fas fa-truck"></i> Автомобили</h2>
+                    <span class="badge">Фиксированный список</span>
+                </div>
+                <div id="vehicles-list" class="loading">
+                    <i class="fas fa-spinner fa-spin"></i><br>
+                    Загрузка автомобилей...
+                </div>
+            </div>
+
+            <!-- Секция рейсов -->
+            <div class="section" style="margin-top: 25px;">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fas fa-route"></i> Рейсы</h2>
+                    <button class="btn btn-success" onclick="showAddTripModal()">
+                        <i class="fas fa-plus"></i> Создать рейс
+                    </button>
+                </div>
+                <div id="trips-list" class="loading">
+                    <i class="fas fa-spinner fa-spin"></i><br>
+                    Загрузка рейсов...
+                </div>
+            </div>
+        </div>
+
+        <!-- Правая колонка: Грузы -->
+        <div>
+            <!-- Секция грузов -->
+            <div class="section">
+                <div class="section-header">
+                    <h2 class="section-title"><i class="fas fa-boxes"></i> Грузы</h2>
+                    <button class="btn btn-success" onclick="showAddCargoModal()">
+                        <i class="fas fa-plus"></i> Добавить груз
+                    </button>
+                </div>
+                <div id="cargos-list" class="loading">
+                    <i class="fas fa-spinner fa-spin"></i><br>
+                    Загрузка грузов...
+                </div>
+            </div>
+
+            <!-- Уведомления -->
+            <div id="alerts-container" style="margin-top: 25px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальные окна -->
+<div id="modalContainer"></div>
+
+<script>
+    const API_URL = 'http://localhost:5555/api/v1';
+    let vehicles = [];
+    let trips = [];
+    let cargos = [];
+    let destinations = [];
+
+    // Инициализация при загрузке
+    document.addEventListener('DOMContentLoaded', function() {
+        loadAllData();
+    });
+
+    // ========== ОСНОВНЫЕ ФУНКЦИИ ==========
+
+    // Загрузка всех данных
+    async function loadAllData() {
+        try {
+            console.log('Загрузка данных с сервера...');
+
+            // Параллельная загрузка
+            const [vehiclesRes, tripsRes, cargosRes, destRes] = await Promise.all([
+                fetch(`${API_URL}/vehicles`).then(r => {
+                    if (!r.ok) throw new Error('Ошибка загрузки автомобилей');
+                    return r.json();
+                }),
+                fetch(`${API_URL}/trips`).then(r => {
+                    if (!r.ok) throw new Error('Ошибка загрузки рейсов');
+                    return r.json();
+                }),
+                fetch(`${API_URL}/cargos`).then(r => {
+                    if (!r.ok) throw new Error('Ошибка загрузки грузов');
+                    return r.json();
+                }),
+                fetch(`${API_URL}/trips/destinations`).then(r => {
+                    if (!r.ok) throw new Error('Ошибка загрузки пунктов назначения');
+                    return r.json();
+                })
+            ]);
+
+            vehicles = vehiclesRes;
+            trips = tripsRes;
+            cargos = cargosRes;
+            destinations = destRes;
+
+            console.log('Данные загружены:');
+            console.log('- Автомобили:', vehicles.length);
+            console.log('- Рейсы:', trips.length);
+            console.log('- Грузы:', cargos.length);
+            console.log('- Пункты назначения:', destinations.length);
+
+            // Проверяем структуру данных
+            if (trips.length > 0) {
+                console.log('Пример рейса:', JSON.stringify(trips[0], null, 2));
+            }
+
+            updateUI();
+
+        } catch (error) {
+            console.error('Ошибка загрузки:', error);
+            showAlert('Ошибка загрузки данных: ' + error.message, 'error');
+        }
+    }
+
+    // Обновление интерфейса
+    function updateUI() {
+        updateVehiclesList();
+        updateTripsList();
+        updateCargosList();
+        updateStats();
+    }
+
+    // Обновление статистики
+    function updateStats() {
+        document.getElementById('stat-vehicles').textContent = vehicles.length;
+        document.getElementById('stat-trips').textContent = trips.length;
+        document.getElementById('stat-cargos').textContent = cargos.length;
+
+        // Рассчитываем загрузку
+        const totalCapacity = vehicles.reduce((sum, v) => sum + v.capacity, 0);
+        const usedCapacity = trips.reduce((sum, t) => sum + (t.totalCargoSize || 0), 0);
+        const usagePercent = totalCapacity > 0 ? Math.round((usedCapacity / totalCapacity) * 100) : 0;
+        document.getElementById('stat-usage').textContent = `${usagePercent}%`;
+    }
+
+    // Обновление списка автомобилей (без действий)
+    function updateVehiclesList() {
+        const container = document.getElementById('vehicles-list');
+
+        if (vehicles.length === 0) {
+            container.innerHTML = `
+                    <div style="text-align: center; padding: 30px; color: var(--gray);">
+                        <i class="fas fa-truck" style="font-size: 40px; margin-bottom: 15px;"></i>
+                        <p>Нет автомобилей</p>
+                    </div>
+                `;
+            return;
+        }
+
+        const html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Тип</th>
+                            <th>Вместимость</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${vehicles.map(vehicle => `
+                            <tr>
+                                <td><strong>${vehicle.name}</strong></td>
+                                <td>${vehicle.type}</td>
+                                <td>${vehicle.capacity} ячеек</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+
+        container.innerHTML = html;
+    }
+
+    // Обновление списка рейсов (без кнопки "Изменить")
+    async function loadAllData() {
+        try {
+            console.log('Загрузка данных с сервера...');
+
+            // Параллельная загрузка
+            const [vehiclesRes, tripsRes, cargosRes, destRes] = await Promise.all([
+                fetch(`${API_URL}/vehicles`).then(r => {
+                    if (!r.ok) throw new Error('Ошибка загрузки автомобилей');
+                    return r.json();
+                }),
+                fetch(`${API_URL}/trips`).then(r => {
+                    if (!r.ok) throw new Error('Ошибка загрузки рейсов');
+                    return r.json();
+                }),
+                fetch(`${API_URL}/cargos`).then(r => {
+                    if (!r.ok) throw new Error('Ошибка загрузки грузов');
+                    return r.json();
+                }),
+                fetch(`${API_URL}/trips/destinations`).then(r => {
+                    if (!r.ok) throw new Error('Ошибка загрузки пунктов назначения');
+                    return r.json();
+                })
+            ]);
+
+            vehicles = vehiclesRes;
+            trips = tripsRes;
+            cargos = cargosRes;
+            destinations = destRes;
+
+            console.log('Данные загружены:');
+            console.log('- Автомобили:', vehicles.length);
+            console.log('- Рейсы:', trips.length);
+            console.log('- Грузы:', cargos.length);
+            console.log('- Пункты назначения:', destinations.length);
+
+            // Проверяем структуру данных
+            if (trips.length > 0) {
+                console.log('Пример рейса:', JSON.stringify(trips[0], null, 2));
+            }
+
+            updateUI();
+
+        } catch (error) {
+            console.error('Ошибка загрузки:', error);
+            showAlert('Ошибка загрузки данных: ' + error.message, 'error');
+        }
+    }
+
+    // Обновление списка рейсов (без кнопки "Изменить")
+    function updateTripsList() {
+        const container = document.getElementById('trips-list');
+
+        console.log('Обновление списка рейсов. Количество рейсов:', trips.length);
+        console.log('Пример данных рейса:', trips.length > 0 ? trips[0] : 'нет рейсов');
+        console.log('Автомобили:', vehicles.length);
+
+        if (trips.length === 0) {
+            container.innerHTML = `
+      <div style="text-align: center; padding: 30px; color: var(--gray);">
+        <i class="fas fa-route" style="font-size: 40px; margin-bottom: 15px;"></i>
+        <p>Нет рейсов</p>
+        <button class="btn btn-sm" onclick="showAddTripModal()">
+          <i class="fas fa-plus"></i> Создать первый рейс
+        </button>
+      </div>
+    `;
+            return;
+        }
+
+        const html = trips.map(trip => {
+            console.log('Обработка рейса:', trip.id);
+
+            // Находим автомобиль разными способами
+            let vehicle = null;
+
+            if (trip.vehicle) {
+                // Если автомобиль уже в объекте рейса
+                vehicle = trip.vehicle;
+            } else if (trip.vehicleId) {
+                // Ищем автомобиль по ID
+                vehicle = vehicles.find(v => v.id === trip.vehicleId.toString());
+            }
+
+            console.log('Найденный автомобиль для рейса', trip.id, ':', vehicle);
+
+            const tripCargos = cargos.filter(c => c.tripId && c.tripId.toString() === trip.id.toString());
+            const usedSpace = tripCargos.reduce((sum, c) => sum + c.size, 0);
+            const capacity = vehicle ? vehicle.capacity : 0;
+            const usagePercent = capacity > 0 ? Math.round((usedSpace / capacity) * 100) : 0;
+            const isFull = capacity > 0 ? usedSpace >= capacity : false;
+
+            return `
+      <div class="trip-card">
+        <div class="trip-header">
+          <div>
+            <span class="trip-id">Рейс ${trip.id}</span>
+            <h3 class="trip-destination">→ ${trip.destination}</h3>
+          </div>
+          <div class="status-badge ${isFull ? 'status-full' : 'status-available'}">
+            ${isFull ? 'ПОЛНЫЙ' : 'СВОБОДНО'}
+          </div>
+        </div>
+
+        <div class="trip-details">
+          <div class="detail-item">
+            <div class="detail-value">${vehicle ? vehicle.name : 'Не назначен'}</div>
+            <div class="detail-label">Автомобиль</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-value">${tripCargos.length}</div>
+            <div class="detail-label">Грузов</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-value">${usedSpace}/${capacity}</div>
+            <div class="detail-label">Ячеек</div>
+          </div>
+        </div>
+
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: ${Math.min(usagePercent, 100)}%"></div>
+        </div>
+
+        ${tripCargos.length > 0 ? `
+          <div style="margin-top: 15px;">
+            <strong>Грузы в рейсе:</strong>
+            ${tripCargos.map(cargo => `
+              <div class="cargo-item">
+                <div>
+                  <strong>${cargo.name}</strong> (${cargo.size} яч.)
+                </div>
+                <button class="btn btn-sm btn-danger" onclick="deleteCargo('${cargo.id}')">
+                  <i class="fas fa-trash"></i> Удалить
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <div class="actions">
+          <button class="btn btn-sm" onclick="addCargoToTrip('${trip.id}')">
+            <i class="fas fa-box"></i> Добавить груз
+          </button>
+          <button class="btn btn-sm btn-danger" onclick="deleteTrip('${trip.id}')">
+            <i class="fas fa-trash"></i> Удалить рейс
+          </button>
+        </div>
+      </div>
+    `;
+        }).join('');
+
+        container.innerHTML = html;
+    }
+
+    // Обновление списка грузов с улучшенной информацией о рейсах
+    // Обновление списка грузов с улучшенной информацией о рейсах
+    function updateCargosList() {
+        const container = document.getElementById('cargos-list');
+
+        console.log('Обновление списка грузов. Всего грузов:', cargos.length);
+        console.log('Доступные рейсы:', trips.length);
+
+        if (cargos.length === 0) {
+            container.innerHTML = `
+            <div style="text-align: center; padding: 30px; color: var(--gray);">
+                <i class="fas fa-boxes" style="font-size: 40px; margin-bottom: 15px;"></i>
+                <p>Нет грузов</p>
+                <button class="btn btn-sm" onclick="showAddCargoModal()">
+                    <i class="fas fa-plus"></i> Добавить первый груз
+                </button>
+            </div>
+        `;
+            return;
+        }
+
+        const html = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Размер</th>
+                    <th>Рейс (детали)</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${cargos.map(cargo => {
+            console.log('Обрабатываю груз:', cargo);
+
+            // Находим рейс груза, правильно сравнивая ID
+            const trip = trips.find(t => {
+                // Оба ID должны быть строками для сравнения
+                const cargoTripId = cargo.tripId ? cargo.tripId.toString() : null;
+                const tripId = t.id ? t.id.toString() : null;
+                return cargoTripId && tripId && cargoTripId === tripId;
+            });
+
+            console.log('Найденный рейс для груза:', trip);
+
+            // Находим автомобиль для этого рейса
+            let vehicle = null;
+            if (trip) {
+                if (trip.vehicle) {
+                    vehicle = trip.vehicle;
+                } else if (trip.vehicleId) {
+                    vehicle = vehicles.find(v => {
+                        const vId = v.id ? v.id.toString() : null;
+                        const tripVehicleId = trip.vehicleId ? trip.vehicleId.toString() : null;
+                        return vId && tripVehicleId && vId === tripVehicleId;
+                    });
+                }
+            }
+
+            const tripInfo = trip ?
+                `<div style="font-size: 0.9em;">
+                            <strong>Рейс ${trip.id}</strong> → ${trip.destination}<br>
+                            <span style="color: var(--gray);">
+                                ${vehicle ? vehicle.name : 'Нет авто'} |
+                                ${vehicle ? `${vehicle.capacity} яч.` : ''}
+                            </span>
+                        </div>` :
+                '<div style="color: var(--gray); font-style: italic;">Не назначен</div>';
+
+            return `
+                        <tr>
+                            <td><strong>${cargo.name}</strong></td>
+                            <td>${cargo.size} ячеек</td>
+                            <td>${tripInfo}</td>
+                            <td>
+                                <button class="btn btn-sm" onclick="moveCargo('${cargo.id}')" title="Перенести в другой рейс">
+                                    <i class="fas fa-exchange-alt"></i> Перенести
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteCargo('${cargo.id}')" title="Удалить">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+        }).join('')}
+            </tbody>
+        </table>
+    `;
+
+        container.innerHTML = html;
+    }
+
+    // ========== МОДАЛЬНЫЕ ОКНА ==========
+
+    // Показать модальное окно добавления рейса
+    function showAddTripModal() {
+        if (vehicles.length === 0) {
+            showAlert('Нет доступных автомобилей', 'error');
+            return;
+        }
+
+        const modalHtml = `
+                <div class="modal" id="addTripModal">
+                    <div class="modal-content">
+                        <h2 style="margin-bottom: 20px;"><i class="fas fa-route"></i> Создать рейс</h2>
+
+                        <div class="form-group">
+                            <label>Пункт назначения:</label>
+                            <select id="tripDestination">
+                                ${destinations.map(d => `<option value="${d}">${d}</option>`).join('')}
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Автомобиль:</label>
+                            <select id="tripVehicleId">
+                                ${vehicles.map(v => `
+                                    <option value="${v.id}">${v.name} (${v.type}, ${v.capacity} ячеек)</option>
+                                `).join('')}
+                            </select>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button class="btn" onclick="addTrip()">
+                                <i class="fas fa-plus"></i> Создать рейс
+                            </button>
+                            <button class="btn btn-danger" onclick="closeModal()">
+                                Отмена
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+        document.getElementById('modalContainer').innerHTML = modalHtml;
+        document.getElementById('addTripModal').style.display = 'flex';
+    }
+
+    // Показать модальное окно добавления груза
+    // Показать модальное окно добавления груза
+    function showAddCargoModal() {
+        if (trips.length === 0) {
+            showAlert('Сначала создайте хотя бы один рейс', 'error');
+            return;
+        }
+
+        // Рассчитываем занятое место для каждого рейса перед созданием модального окна
+        const tripsWithAvailability = trips.map(trip => {
+            const vehicle = vehicles.find(v => v.id === trip.vehicleId?.toString());
+            const tripCargos = cargos.filter(c => c.tripId?.toString() === trip.id.toString());
+            const usedSpace = tripCargos.reduce((sum, c) => sum + c.size, 0);
+            const capacity = vehicle ? vehicle.capacity : 0;
+            const availableSpace = capacity - usedSpace;
+
+            return {
+                ...trip,
+                vehicle,
+                usedSpace,
+                capacity,
+                availableSpace
+            };
+        });
+
+        const modalHtml = `
+        <div class="modal" id="addCargoModal">
+            <div class="modal-content">
+                <h2 style="margin-bottom: 20px;"><i class="fas fa-box"></i> Добавить груз</h2>
+
+                <div class="form-group">
+                    <label>Название груза:</label>
+                    <input type="text" id="cargoName" placeholder="Например: Холодильники" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label>Размер (ячеек):</label>
+                    <input type="number" id="cargoSize" value="1" min="1" max="100">
+                    <div style="font-size: 12px; color: var(--gray); margin-top: 5px;">
+                        Укажите размер груза в ячейках
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Рейс (показаны только рейсы со свободным местом):</label>
+                    <select id="cargoTripId">
+                        <option value="">-- Выберите рейс --</option>
+                        ${tripsWithAvailability.map(trip => {
+            if (!trip.vehicle) {
+                return `
+                                    <option value="${trip.id}" disabled title="Рейс без автомобиля">
+                                        Рейс ${trip.id} → ${trip.destination} (Нет автомобиля)
+                                    </option>
+                                `;
+            }
+
+            const isAvailable = trip.availableSpace > 0;
+            const title = isAvailable
+                ? `Свободно: ${trip.availableSpace} ячеек из ${trip.capacity}`
+                : `Рейс полностью заполнен (${trip.usedSpace}/${trip.capacity})`;
+
+            return `
+                                <option value="${trip.id}" ${!isAvailable ? 'disabled' : ''} title="${title}">
+                                    Рейс ${trip.id} → ${trip.destination}
+                                    (${trip.vehicle.name}, ${trip.usedSpace}/${trip.capacity} яч.)
+                                    ${!isAvailable ? ' [ПОЛНЫЙ]' : ''}
+                                </option>
+                            `;
+        }).join('')}
+                    </select>
+                    <div style="font-size: 12px; color: var(--gray); margin-top: 5px;">
+                        [ПОЛНЫЙ] - рейс полностью заполнен и недоступен для добавления грузов
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn" onclick="addCargo()" id="addCargoBtn">
+                        <i class="fas fa-plus"></i> Добавить груз
+                    </button>
+                    <button class="btn btn-danger" onclick="closeModal()">
+                        Отмена
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+        document.getElementById('modalContainer').innerHTML = modalHtml;
+        document.getElementById('addCargoModal').style.display = 'flex';
+
+        // Добавляем обработчик для обновления максимального размера при выборе рейса
+        const sizeInput = document.getElementById('cargoSize');
+        const tripSelect = document.getElementById('cargoTripId');
+        const addButton = document.getElementById('addCargoBtn');
+
+        tripSelect.addEventListener('change', function() {
+            const selectedTripId = this.value;
+            if (!selectedTripId) {
+                sizeInput.max = 100;
+                addButton.disabled = true;
+                return;
+            }
+
+            const selectedTrip = tripsWithAvailability.find(t => t.id.toString() === selectedTripId.toString());
+            if (selectedTrip) {
+                sizeInput.max = selectedTrip.availableSpace;
+                addButton.disabled = false;
+
+                if (sizeInput.value > selectedTrip.availableSpace) {
+                    sizeInput.value = selectedTrip.availableSpace;
+                }
+            }
+        });
+
+        // Блокируем кнопку, если рейс не выбран
+        addButton.disabled = !tripSelect.value;
+    }
+
+    // ========== CRUD ОПЕРАЦИИ ==========
+
+    // Добавить рейс
+    async function addTrip() {
+        const destination = document.getElementById('tripDestination').value;
+        const vehicleId = document.getElementById('tripVehicleId').value;
+
+        try {
+            const response = await fetch(`${API_URL}/trips`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ destination, vehicleId })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Ошибка создания рейса');
+            }
+
+            closeModal();
+            await loadAllData();
+            showAlert('Рейс успешно создан', 'success');
+
+        } catch (error) {
+            showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+    }
+
+    // Добавить груз
+    async function addCargo() {
+        const name = document.getElementById('cargoName').value;
+        const size = parseInt(document.getElementById('cargoSize').value);
+        const tripId = document.getElementById('cargoTripId').value;
+
+        if (!name || size < 1) {
+            showAlert('Заполните все поля правильно', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/cargos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, size, tripId })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Ошибка добавления груза');
+            }
+
+            closeModal();
+            await loadAllData();
+            showAlert('Груз успешно добавлен', 'success');
+
+        } catch (error) {
+            showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+    }
+
+    // Удалить рейс
+    async function deleteTrip(id) {
+        if (!confirm('Удалить этот рейс? Все грузы в нём также будут удалены.')) return;
+
+        try {
+            const response = await fetch(`${API_URL}/trips/${id}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Ошибка удаления рейса');
+            }
+
+            await loadAllData();
+            showAlert('Рейс удален', 'success');
+
+        } catch (error) {
+            showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+    }
+
+    // Удалить груз
+    async function deleteCargo(id) {
+        if (!confirm('Удалить этот груз?')) return;
+
+        try {
+            const response = await fetch(`${API_URL}/cargos/${id}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Ошибка удаления груза');
+            }
+
+            await loadAllData();
+            showAlert('Груз удален', 'success');
+
+        } catch (error) {
+            showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+    }
+
+    // Добавить груз в конкретный рейс
+    function addCargoToTrip(tripId) {
+        const trip = trips.find(t => t.id === tripId);
+        if (!trip) return;
+
+        const vehicle = vehicles.find(v => v.id === trip.vehicleId);
+        const usedSpace = cargos.filter(c => c.tripId === trip.id).reduce((sum, c) => sum + c.size, 0);
+        const availableSpace = vehicle ? vehicle.capacity - usedSpace : 0;
+
+        const modalHtml = `
+                <div class="modal" id="addCargoToTripModal">
+                    <div class="modal-content">
+                        <h2 style="margin-bottom: 20px;">Добавить груз в рейс</h2>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                            <strong>Рейс ${trip.id} → ${trip.destination}</strong><br>
+                            Автомобиль: ${vehicle ? vehicle.name : 'Не назначен'}<br>
+                            Свободно ячеек: ${availableSpace}
+                        </div>
+
+                        <div class="form-group">
+                            <label>Название груза:</label>
+                            <input type="text" id="cargoNameTrip" placeholder="Например: Холодильники">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Размер (ячеек):</label>
+                            <input type="number" id="cargoSizeTrip" value="1" min="1" max="${availableSpace}">
+                        </div>
+
+                        <div class="modal-footer">
+                            <button class="btn" onclick="addCargoToTripAction('${tripId}')">
+                                <i class="fas fa-plus"></i> Добавить
+                            </button>
+                            <button class="btn btn-danger" onclick="closeModal()">
+                                Отмена
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+        document.getElementById('modalContainer').innerHTML = modalHtml;
+        document.getElementById('addCargoToTripModal').style.display = 'flex';
+    }
+
+    async function addCargoToTripAction(tripId) {
+        const name = document.getElementById('cargoNameTrip').value;
+        const size = parseInt(document.getElementById('cargoSizeTrip').value);
+
+        if (!name || size < 1) {
+            showAlert('Заполните все поля правильно', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/cargos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, size, tripId })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Ошибка добавления груза');
+            }
+
+            closeModal();
+            await loadAllData();
+            showAlert('Груз успешно добавлен в рейс', 'success');
+
+        } catch (error) {
+            showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+    }
+
+    // Перенести груз
+    function moveCargo(cargoId) {
+        console.log('Перенос груса с ID:', cargoId);
+
+        const cargo = cargos.find(c => c.id && c.id.toString() === cargoId.toString());
+        if (!cargo) {
+            showAlert('Груз не найден', 'error');
+            return;
+        }
+
+        const currentTrip = trips.find(t => t.id && t.id.toString() === cargo.tripId.toString());
+        if (!currentTrip) {
+            showAlert('Текущий рейс не найден', 'error');
+            return;
+        }
+
+        const currentVehicle = vehicles.find(v => v.id && v.id.toString() === currentTrip.vehicleId.toString());
+        const otherTrips = trips.filter(t => t.id.toString() !== cargo.tripId.toString());
+
+        // Рассчитываем занятое место в текущем рейсе
+        const currentTripCargos = cargos.filter(c =>
+            c.tripId && c.tripId.toString() === currentTrip.id.toString() &&
+            c.id.toString() !== cargoId.toString()
+        );
+        const currentUsedSpace = currentTripCargos.reduce((sum, c) => sum + c.size, 0);
+        const currentCapacity = currentVehicle ? currentVehicle.capacity : 0;
+
+        const modalHtml = `
+        <div class="modal" id="moveCargoModal">
+            <div class="modal-content">
+                <h2 style="margin-bottom: 20px;">Перенести груз "${cargo.name}"</h2>
+
+                <div class="form-group">
+                    <label>Текущий рейс:</label>
+                    <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-top: 8px;">
+                        <strong>Рейс ${currentTrip.id}</strong> → ${currentTrip.destination}<br>
+                        Автомобиль: ${currentVehicle ? currentVehicle.name : 'Не назначен'}<br>
+                        Размер груза: ${cargo.size} ячеек
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Новый рейс (только с таким же пунктом назначения):</label>
+                    <select id="newTripId">
+                        <option value="">-- Выберите рейс --</option>
+                        ${otherTrips.map(trip => {
+            const vehicle = vehicles.find(v => v.id && v.id.toString() === trip.vehicleId.toString());
+
+            if (!vehicle) return '';
+
+            // Получаем все грузы в этом рейсе (кроме переносимого, если он там есть)
+            const tripCargos = cargos.filter(c =>
+                c.tripId && c.tripId.toString() === trip.id.toString() &&
+                c.id.toString() !== cargoId.toString()
+            );
+
+            const usedSpace = tripCargos.reduce((sum, c) => sum + c.size, 0);
+            const availableSpace = vehicle.capacity - usedSpace;
+            const canMove = trip.destination === currentTrip.destination && availableSpace >= cargo.size;
+
+            let optionText = `Рейс ${trip.id} → ${trip.destination} (${vehicle.name}, ${vehicle.capacity} яч., свободно: ${availableSpace} яч.)`;
+            let title = '';
+
+            if (trip.destination !== currentTrip.destination) {
+                title = 'Разный пункт назначения';
+            } else if (availableSpace < cargo.size) {
+                title = `Недостаточно места. Нужно: ${cargo.size} яч., свободно: ${availableSpace} яч.`;
+            }
+
+            return `
+                                <option value="${trip.id}" ${!canMove ? 'disabled' : ''} title="${title}">
+                                    ${optionText} ${!canMove ? '✗' : ''}
+                                </option>
+                            `;
+        }).join('')}
+                    </select>
+                    <div style="font-size: 12px; color: var(--gray); margin-top: 5px;">
+                        ✗ - рейс недоступен (наведите курсор для подробностей)
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn" onclick="moveCargoAction('${cargoId}')" id="moveCargoBtn">
+                        <i class="fas fa-exchange-alt"></i> Перенести
+                    </button>
+                    <button class="btn btn-danger" onclick="closeModal()">
+                        Отмена
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+        document.getElementById('modalContainer').innerHTML = modalHtml;
+        document.getElementById('moveCargoModal').style.display = 'flex';
+
+        // Блокируем кнопку, если не выбран рейс
+        const select = document.getElementById('newTripId');
+        const button = document.getElementById('moveCargoBtn');
+
+        select.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            button.disabled = !this.value || selectedOption.disabled;
+        });
+
+        button.disabled = !select.value;
+    }
+
+    async function moveCargoAction(cargoId) {
+        const newTripId = document.getElementById('newTripId').value;
+        if (!newTripId) {
+            showAlert('Выберите рейс для переноса', 'error');
+            return;
+        }
+
+        try {
+            console.log('Перенос груса', cargoId, 'в рейс', newTripId);
+
+            const response = await fetch(`${API_URL}/cargos/${cargoId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tripId: newTripId })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || 'Ошибка переноса груза');
+            }
+
+            closeModal();
+            await loadAllData();
+            showAlert('Груз успешно перенесен', 'success');
+
+        } catch (error) {
+            console.error('Ошибка переноса:', error);
+            showAlert(`Ошибка: ${error.message}`, 'error');
+        }
+    }
+
+    // Закрыть модальное окно
+    function closeModal() {
+        const modal = document.querySelector('.modal[style*="display: flex"]');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    // Показать уведомление
+    function showAlert(message, type = 'info') {
+        const alertsContainer = document.getElementById('alerts-container');
+        const alertId = 'alert-' + Date.now();
+
+        const alertHtml = `
+                <div class="alert alert-${type}" id="${alertId}">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+                    <span>${message}</span>
+                    <button class="btn btn-sm" onclick="document.getElementById('${alertId}').remove()" style="margin-left: auto;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `;
+
+        alertsContainer.insertAdjacentHTML('afterbegin', alertHtml);
+
+        // Автоматическое удаление через 5 секунд
+        setTimeout(() => {
+            const alertEl = document.getElementById(alertId);
+            if (alertEl) {
+                alertEl.remove();
+            }
+        }, 5000);
+    }
+
+    // Функция для отладки данных
+    function debugData() {
+        console.group('=== ДЕБАГ ДАННЫХ ===');
+        console.log('Количество автомобилей:', vehicles.length);
+        console.log('Автомобили:', vehicles);
+
+        console.log('Количество рейсов:', trips.length);
+        trips.forEach((trip, i) => {
+            console.group(`Рейс ${i + 1} (ID: ${trip.id})`);
+            console.log('Данные:', trip);
+            console.log('vehicleId:', trip.vehicleId);
+            console.log('vehicle объект:', trip.vehicle);
+
+            // Ищем автомобиль вручную
+            const foundVehicle = vehicles.find(v => v.id === trip.vehicleId?.toString());
+            console.log('Найденный автомобиль:', foundVehicle);
+            console.groupEnd();
+        });
+
+        console.log('Количество грузов:', cargos.length);
+        console.log('Грузы:', cargos);
+
+        console.groupEnd();
+    }
+
+    // Вызывайте эту функцию в консоли браузера для отладки
+    window.debugData = debugData;
+
+    // Обработка нажатия ESC для закрытия модальных окон
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            closeModal();
+        }
+    });
+
+    // Закрытие модального окна при клике вне его
+    document.addEventListener('click', function(event) {
+        if (event.target.classList.contains('modal')) {
+            closeModal();
+        }
+    });
+</script>
+</body>
+</html>
